@@ -6,7 +6,6 @@ __pycache__/
 *.pptx
 *.pdf
 *.docx
-*.txt
 .git/
 .gitignore
 .vscode/
