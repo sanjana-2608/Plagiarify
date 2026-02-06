@@ -6,10 +6,10 @@ from typing import List, Tuple
 
 import streamlit as st
 
-from similarity_engine import compare_documents, get_model, load_document_from_bytes
+from similarity_engine import compare_documents, load_document_from_bytes
 
 
-DEFAULT_MODEL = os.getenv("MODEL_NAME", "paraphrase-MiniLM-L3-v2")
+DEFAULT_MODEL = os.getenv("MODEL_NAME", "tf-idf")
 MAX_FILE_MB = int(os.getenv("MAX_FILE_MB", "10"))
 DEFAULT_MAX_SENTENCES = int(os.getenv("MAX_SENTENCES", "200"))
 DEFAULT_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "32"))
@@ -17,13 +17,6 @@ DEFAULT_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "32"))
 
 def _hash_bytes(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
-
-
-@st.cache_resource(show_spinner=False)
-def load_model(model_name: str):
-    model = get_model(model_name)
-    model.encode(["warmup"], convert_to_numpy=True, normalize_embeddings=True)
-    return model
 
 
 @st.cache_data(show_spinner=False)
@@ -89,15 +82,11 @@ if st.button(
         st.stop()
 
     with st.spinner("Computing similarity..."):
-        model = load_model(model_name)
         results = compare_documents(
             documents,
             model_name=model_name,
-            model=model,
             threshold=0.7,
             max_pairs=0,
-            max_sentences=max_sentences,
-            batch_size=batch_size,
         )
 
     if not results:
@@ -109,4 +98,4 @@ if st.button(
 st.divider()
 
 # Footer
-st.caption(f"🤖 Model: {model_name} (SentenceTransformers)")
+st.caption(f"🤖 Model: {model_name} (TF-IDF)")
