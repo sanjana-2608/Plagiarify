@@ -4,15 +4,9 @@ import hashlib
 import os
 from typing import List, Tuple
 
-import pandas as pd
 import streamlit as st
 
-from similarity_engine import (
-    compare_documents,
-    get_model,
-    load_document_from_bytes,
-    results_to_json,
-)
+from similarity_engine import compare_documents, get_model, load_document_from_bytes
 
 
 DEFAULT_MODEL = os.getenv("MODEL_NAME", "paraphrase-MiniLM-L3-v2")
@@ -43,84 +37,25 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-st.title("🔍 Plagiarism & Document Similarity Detector")
-st.markdown("""
-### Welcome to the Plagiarism Detection System
+st.title("🔍 Document Similarity Score")
 
-This tool uses advanced AI to:
-- 📄 Compare multiple documents simultaneously
-- 🔬 Detect semantic similarity (not just exact matches)
-- 🎯 Identify paraphrased content
-- 📊 Generate detailed similarity reports
-
-**Instructions:**
-1. Upload 2 or more documents (PDF, TXT, or DOCX)
-2. Adjust the similarity threshold if needed
-3. Click "Compare Documents" to analyze
-""")
-
-st.divider()
-
-st.subheader("📤 Upload Documents")
+st.subheader("📤 Upload Two TXT Files")
 uploaded_files = st.file_uploader(
-    "Choose your documents to compare",
-    type=["pdf", "txt", "docx"],
+    "Choose two .txt files",
+    type=["txt"],
     accept_multiple_files=True,
-    help="Upload at least 2 documents for comparison"
+    help="Upload exactly 2 text files for comparison",
 )
 
 if uploaded_files:
-    st.success(f"✅ {len(uploaded_files)} document(s) uploaded successfully!")
+    st.success(f"✅ {len(uploaded_files)} file(s) uploaded successfully!")
     with st.expander("📋 View uploaded files"):
         for f in uploaded_files:
             st.write(f"- {f.name}")
 
-st.subheader("⚙️ Configuration")
-col1, col2 = st.columns(2)
-with col1:
-    threshold = st.slider(
-        "Sentence match threshold",
-        0.5,
-        0.95,
-        0.7,
-        0.05,
-        help="Higher threshold = stricter matching (0.7 recommended)",
-    )
-with col2:
-    max_pairs = st.slider(
-        "Max sentence matches per pair",
-        3,
-        20,
-        10,
-        1,
-        help="Maximum number of similar sentences to display",
-    )
-
-st.sidebar.header("⚡ Performance Settings")
-model_name = st.sidebar.selectbox(
-    "Embedding model",
-    [
-        "paraphrase-MiniLM-L3-v2",
-        "all-MiniLM-L6-v2",
-        "all-mpnet-base-v2",
-    ],
-    index=0,
-    help="Faster models load quicker on Railway",
-)
-max_sentences = st.sidebar.slider(
-    "Max sentences per document",
-    50,
-    500,
-    DEFAULT_MAX_SENTENCES,
-    25,
-    help="Lower values make comparisons faster",
-)
-batch_size = st.sidebar.selectbox(
-    "Embedding batch size",
-    [16, 32, 64],
-    index=1,
-    help="Higher values can be faster but use more memory",
-)
+model_name = DEFAULT_MODEL
+max_sentences = DEFAULT_MAX_SENTENCES
+batch_size = DEFAULT_BATCH_SIZE
 
 st.divider()
 
@@ -130,6 +65,10 @@ if st.button(
     use_container_width=True,
     type="primary",
 ):
+    if not uploaded_files or len(uploaded_files) != 2:
+        st.warning("⚠️ Please upload exactly two TXT files.")
+        st.stop()
+
     documents: List[Tuple[str, str]] = []
     oversize_files = []
     for f in uploaded_files:
@@ -147,6 +86,7 @@ if st.button(
             + ", ".join(oversize_files)
             + f" (limit: {MAX_FILE_MB} MB)"
         )
+        st.stop()
 
     with st.spinner("Computing similarity..."):
         model = load_model(model_name)
@@ -154,59 +94,19 @@ if st.button(
             documents,
             model_name=model_name,
             model=model,
-            threshold=threshold,
-            max_pairs=max_pairs,
+            threshold=0.7,
+            max_pairs=0,
             max_sentences=max_sentences,
             batch_size=batch_size,
         )
 
     if not results:
-        st.warning("⚠️ Please upload at least two documents.")
+        st.warning("⚠️ Please upload exactly two TXT files.")
     else:
-        st.success("✅ Analysis complete!")
-        
-        st.subheader("📊 Similarity Scores")
-        table_rows = [
-            {
-                "Document A": r.doc_a,
-                "Document B": r.doc_b,
-                "Similarity %": round(r.similarity * 100, 2),
-            }
-            for r in results
-        ]
-        st.dataframe(pd.DataFrame(table_rows), use_container_width=True)
-
-        st.subheader("📝 Top Matching Sentences")
-        for r in results:
-            with st.expander(f"{r.doc_a} ↔ {r.doc_b}"):
-                if not r.top_matches:
-                    st.write("No sentence-level matches above threshold.")
-                else:
-                    for i, (a, b, score) in enumerate(r.top_matches, 1):
-                        st.markdown(f"**Match #{i} - Score:** {score * 100:.2f}%")
-                        col_a, col_b = st.columns(2)
-                        with col_a:
-                            st.info(f"📄 {r.doc_a}")
-                            st.write(a)
-                        with col_b:
-                            st.info(f"📄 {r.doc_b}")
-                            st.write(b)
-                        st.divider()
-
-        st.subheader("💾 Download Report")
-        report_json = results_to_json(results)
-        st.download_button(
-            "📥 Download JSON Report",
-            data=report_json,
-            file_name="similarity_report.json",
-            mime="application/json",
-            use_container_width=True
-        )
+        r = results[0]
+        st.metric("Similarity Score", f"{r.similarity * 100:.2f}%")
 
 st.divider()
 
 # Footer
-st.caption(
-    f"🤖 Model: {model_name} (SentenceTransformers) | Cosine similarity scoring"
-)
-st.caption("Made with ❤️ using Streamlit")
+st.caption(f"🤖 Model: {model_name} (SentenceTransformers)")
