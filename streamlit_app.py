@@ -20,8 +20,8 @@ DEFAULT_MODEL = os.getenv("MODEL_NAME", "tf-idf")
 MAX_FILE_MB = int(os.getenv("MAX_FILE_MB", "10"))
 DEFAULT_MAX_SENTENCES = int(os.getenv("MAX_SENTENCES", "200"))
 DEFAULT_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "32"))
-BING_API_KEY = os.getenv("BING_API_KEY", "")
-BING_ENDPOINT = "https://api.bing.microsoft.com/v7.0/search"
+PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY", "")
+PERPLEXITY_ENDPOINT = "https://api.perplexity.ai/chat/completions"
 
 
 def _hash_bytes(content: bytes) -> str:
@@ -155,36 +155,48 @@ def _build_search_queries(text: str, max_queries: int = 3) -> List[str]:
     return queries
 
 
-def _bing_search(
+def _perplexity_search(
     query: str,
     api_key: str,
-    count: int = 5,
-    market: str = "en-US",
-    safe_search: str = "Moderate",
+    model: str = "sonar-small-online",
 ) -> List[Dict[str, str]]:
     if not api_key:
         return []
-    headers = {"Ocp-Apim-Subscription-Key": api_key}
-    params = {
-        "q": query,
-        "count": count,
-        "mkt": market,
-        "safeSearch": safe_search,
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
     }
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "system",
+                "content": "Return relevant sources for plagiarism checking.",
+            },
+            {
+                "role": "user",
+                "content": f"Find web sources related to: {query}",
+            },
+        ],
+        "temperature": 0.2,
+        "top_p": 0.9,
+        "max_tokens": 300,
+        "return_citations": True,
+    }
+
     try:
-        resp = requests.get(BING_ENDPOINT, headers=headers, params=params, timeout=10)
+        resp = requests.post(PERPLEXITY_ENDPOINT, headers=headers, json=payload, timeout=15)
         resp.raise_for_status()
         data = resp.json()
     except requests.RequestException:
         return []
 
+    citations = data.get("citations", []) or []
     results = []
-    for item in data.get("webPages", {}).get("value", []):
-        results.append({
-            "name": item.get("name", ""),
-            "url": item.get("url", ""),
-            "snippet": item.get("snippet", ""),
-        })
+    for url in citations:
+        if isinstance(url, str) and url:
+            results.append({"name": url, "url": url, "snippet": ""})
     return results
 
 
@@ -362,16 +374,23 @@ if st.button(
 
         st.subheader("Web Source Check")
         check_web = st.checkbox("Check if primary file appears on the web")
-        api_key = BING_API_KEY
+        api_key = PERPLEXITY_API_KEY
         if not api_key:
-            api_key = st.text_input("Bing API key", type="password", help="Set BING_API_KEY in Railway for production")
+            api_key = st.text_input(
+                "Perplexity API key",
+                type="password",
+                help="Set PERPLEXITY_API_KEY in Railway for production",
+            )
 
         if check_web:
             if not api_key:
-                st.warning("Please provide a Bing API key to run web checks.")
+                st.warning("Please provide a Perplexity API key to run web checks.")
             else:
-                market = st.selectbox("Market", ["en-US", "en-GB", "en-IN"], index=0)
-                safe_search = st.selectbox("SafeSearch", ["Off", "Moderate", "Strict"], index=1)
+                model = st.selectbox(
+                    "Perplexity model",
+                    ["sonar-small-online", "sonar-medium-online", "sonar-large-online"],
+                    index=0,
+                )
                 queries = _build_search_queries(primary_text)
                 if not queries:
                     st.info("Not enough content to form search queries.")
@@ -380,7 +399,7 @@ if st.button(
                         results_set = []
                         seen_urls = set()
                         for q in queries:
-                            for item in _bing_search(q, api_key, market=market, safe_search=safe_search):
+                            for item in _perplexity_search(q, api_key, model=model):
                                 url = item.get("url", "")
                                 if url and url not in seen_urls:
                                     seen_urls.add(url)
