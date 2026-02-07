@@ -30,14 +30,25 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+st.markdown(
+    """
+    <style>
+    a.stHeadingAnchor {
+        display: none;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("🔍 Document Similarity Score")
 
-st.subheader("📤 Upload Two TXT Files")
+st.subheader("📤 Upload Two Files")
 uploaded_files = st.file_uploader(
-    "Choose two .txt files",
-    type=["txt"],
+    "Choose two files (TXT, PDF, or DOCX)",
+    type=["txt", "pdf", "docx"],
     accept_multiple_files=True,
-    help="Upload exactly 2 text files for comparison",
+    help="Upload exactly 2 files for comparison",
 )
 
 if uploaded_files:
@@ -59,7 +70,7 @@ if st.button(
     type="primary",
 ):
     if not uploaded_files or len(uploaded_files) != 2:
-        st.warning("⚠️ Please upload exactly two TXT files.")
+        st.warning("⚠️ Please upload exactly two files.")
         st.stop()
 
     documents: List[Tuple[str, str]] = []
@@ -90,7 +101,7 @@ if st.button(
         )
 
     if not results:
-        st.warning("⚠️ Please upload exactly two TXT files.")
+        st.warning("⚠️ Please upload exactly two files.")
     else:
         r = results[0]
         st.metric("Similarity Score", f"{r.similarity * 100:.2f}%")
@@ -98,4 +109,4 @@ if st.button(
 st.divider()
 
 # Footer
-st.caption(f"🤖 Model: {model_name} (TF-IDF)")
+st.caption("🤖 Model: all-MiniLM-L6-v2")
