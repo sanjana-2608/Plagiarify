@@ -3,9 +3,11 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+from collections import Counter
 from typing import Dict, List, Tuple
 
 import streamlit as st
+from sentence_transformers import SentenceTransformer, util
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
@@ -132,6 +134,56 @@ def _doc_stats(text: str) -> Dict[str, int]:
         "sentence_count": len(sentences),
         "char_count": len(text),
     }
+
+
+@st.cache_resource(show_spinner=False)
+def _get_embedder() -> SentenceTransformer:
+    return SentenceTransformer("all-MiniLM-L6-v2")
+
+
+def _extract_phrases(text: str, top_n: int = 40) -> List[str]:
+    tokens = _tokenize_words(text)
+    if len(tokens) < 2:
+        return []
+    bigrams = [f"{tokens[i]} {tokens[i + 1]}" for i in range(len(tokens) - 1)]
+    trigrams = [
+        f"{tokens[i]} {tokens[i + 1]} {tokens[i + 2]}"
+        for i in range(len(tokens) - 2)
+    ]
+    phrases = bigrams + trigrams
+    counts = Counter(phrases)
+    return [p for p, _ in counts.most_common(top_n)]
+
+
+def _semantic_phrase_matches(
+    text_a: str,
+    text_b: str,
+    top_n: int = 8,
+    min_score: float = 0.45,
+) -> List[Dict[str, str]]:
+    phrases_a = _extract_phrases(text_a)
+    phrases_b = _extract_phrases(text_b)
+    if not phrases_a or not phrases_b:
+        return []
+
+    embedder = _get_embedder()
+    emb_a = embedder.encode(phrases_a, convert_to_tensor=True)
+    emb_b = embedder.encode(phrases_b, convert_to_tensor=True)
+    sims = util.cos_sim(emb_a, emb_b).cpu().numpy()
+
+    matches = []
+    for i in range(sims.shape[0]):
+        j = int(np.argmax(sims[i]))
+        score = float(sims[i, j])
+        if score >= min_score:
+            matches.append({
+                "phrase_a": phrases_a[i],
+                "phrase_b": phrases_b[j],
+                "score": score,
+            })
+
+    matches = sorted(matches, key=lambda m: m["score"], reverse=True)
+    return matches[:top_n]
 
 
 def _shared_terms(text_a: str, text_b: str, top_n: int = 12) -> List[Dict[str, float]]:
@@ -304,6 +356,22 @@ if st.button(
             )
         else:
             st.info("No sentence matches found.")
+
+        st.markdown("**Similar Concepts Matched**")
+        phrase_matches = _semantic_phrase_matches(text_a, text_b)
+        if phrase_matches:
+            st.dataframe(
+                [
+                    {
+                        "Score": f"{m['score'] * 100:.2f}%",
+                        "Phrase A": m["phrase_a"],
+                        "Phrase B": m["phrase_b"],
+                    }
+                    for m in phrase_matches
+                ],
+            )
+        else:
+            st.info("No similar phrase matches found.")
 
 st.divider()
 
