@@ -198,7 +198,12 @@ def _shared_terms(text_a: str, text_b: str, top_n: int = 12) -> List[Dict[str, f
     ]
 
 
-def _top_sentence_matches(text_a: str, text_b: str, top_n: int = 6) -> List[Dict[str, str]]:
+def _top_sentence_matches(
+    text_a: str,
+    text_b: str,
+    top_n: int = 6,
+    min_score: float = 0.2,
+) -> List[Dict[str, str]]:
     sentences_a = _split_sentences(text_a)
     sentences_b = _split_sentences(text_b)
     if not sentences_a or not sentences_b:
@@ -220,6 +225,7 @@ def _top_sentence_matches(text_a: str, text_b: str, top_n: int = 6) -> List[Dict
             "score": score,
         })
 
+    matches = [m for m in matches if m["score"] >= min_score]
     matches = sorted(matches, key=lambda m: m["score"], reverse=True)
     return matches[:top_n]
 
