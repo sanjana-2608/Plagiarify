@@ -33,8 +33,31 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+    [data-testid="stToolbar"] {
+        display: none;
+    }
     a.stHeadingAnchor {
         display: none;
+    }
+    [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] {
+        border: 2px dashed #4b4b4b;
+        padding: 36px 12px;
+        border-radius: 12px;
+        background: #0f1117;
+    }
+    [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"]::before {
+        content: "+";
+        display: block;
+        font-size: 44px;
+        line-height: 44px;
+        text-align: center;
+        color: #8a8a8a;
+        margin-bottom: 10px;
+    }
+    [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] div,
+    [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] small,
+    [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] span {
+        text-align: center;
     }
     </style>
     """,
@@ -44,18 +67,35 @@ st.markdown(
 st.title("🔍 Document Similarity Score")
 
 st.subheader("📤 Upload Two Files")
-uploaded_files = st.file_uploader(
-    "Choose two files (TXT, PDF, or DOCX)",
-    type=["txt", "pdf", "docx"],
-    accept_multiple_files=True,
-    help="Upload exactly 2 files for comparison",
-)
+col_a, col_b = st.columns(2)
+with col_a:
+    st.markdown("**File A**")
+    file_a = st.file_uploader(
+        "Upload file A",
+        type=["txt", "pdf", "docx"],
+        accept_multiple_files=False,
+        help="Upload the first file",
+        label_visibility="collapsed",
+        key="file_a",
+    )
+with col_b:
+    st.markdown("**File B**")
+    file_b = st.file_uploader(
+        "Upload file B",
+        type=["txt", "pdf", "docx"],
+        accept_multiple_files=False,
+        help="Upload the second file",
+        label_visibility="collapsed",
+        key="file_b",
+    )
 
-if uploaded_files:
-    st.success(f"✅ {len(uploaded_files)} file(s) uploaded successfully!")
+uploaded_files = [f for f in (file_a, file_b) if f]
+
+if file_a and file_b:
+    st.success("✅ 2 files uploaded successfully!")
     with st.expander("📋 View uploaded files"):
-        for f in uploaded_files:
-            st.write(f"- {f.name}")
+        st.write(f"- {file_a.name}")
+        st.write(f"- {file_b.name}")
 
 model_name = DEFAULT_MODEL
 max_sentences = DEFAULT_MAX_SENTENCES
@@ -65,11 +105,11 @@ st.divider()
 
 if st.button(
     "🚀 Compare Documents",
-    disabled=not uploaded_files,
+    disabled=not (file_a and file_b),
     use_container_width=True,
     type="primary",
 ):
-    if not uploaded_files or len(uploaded_files) != 2:
+    if not file_a or not file_b:
         st.warning("⚠️ Please upload exactly two files.")
         st.stop()
 
