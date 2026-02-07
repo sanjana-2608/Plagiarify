@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import os
-from typing import List, Tuple
+import re
+from typing import Dict, List, Tuple
 
 import streamlit as st
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
 from similarity_engine import compare_documents, load_document_from_bytes
 
@@ -108,6 +112,67 @@ model_name = DEFAULT_MODEL
 max_sentences = DEFAULT_MAX_SENTENCES
 batch_size = DEFAULT_BATCH_SIZE
 
+
+def _split_sentences(text: str) -> List[str]:
+    parts = re.split(r"(?<=[.!?])\s+", text.strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _tokenize_words(text: str) -> List[str]:
+    return [w.lower() for w in re.findall(r"[A-Za-z0-9']+", text)]
+
+
+def _doc_stats(text: str) -> Dict[str, int]:
+    words = _tokenize_words(text)
+    sentences = _split_sentences(text)
+    return {
+        "word_count": len(words),
+        "unique_words": len(set(words)),
+        "sentence_count": len(sentences),
+        "char_count": len(text),
+    }
+
+
+def _shared_terms(text_a: str, text_b: str, top_n: int = 12) -> List[Dict[str, float]]:
+    vectorizer = TfidfVectorizer(stop_words="english")
+    tfidf = vectorizer.fit_transform([text_a, text_b]).toarray()
+    shared = np.minimum(tfidf[0], tfidf[1])
+    if shared.sum() == 0:
+        return []
+    top_idx = np.argsort(shared)[::-1][:top_n]
+    terms = vectorizer.get_feature_names_out()
+    return [
+        {"term": terms[i], "score": float(shared[i])}
+        for i in top_idx
+        if shared[i] > 0
+    ]
+
+
+def _top_sentence_matches(text_a: str, text_b: str, top_n: int = 6) -> List[Dict[str, str]]:
+    sentences_a = _split_sentences(text_a)
+    sentences_b = _split_sentences(text_b)
+    if not sentences_a or not sentences_b:
+        return []
+
+    vectorizer = TfidfVectorizer(stop_words="english")
+    vectorizer.fit(sentences_a + sentences_b)
+    mat_a = vectorizer.transform(sentences_a)
+    mat_b = vectorizer.transform(sentences_b)
+    sims = cosine_similarity(mat_a, mat_b)
+
+    matches = []
+    for i in range(sims.shape[0]):
+        j = int(np.argmax(sims[i]))
+        score = float(sims[i, j])
+        matches.append({
+            "sentence_a": sentences_a[i],
+            "sentence_b": sentences_b[j],
+            "score": score,
+        })
+
+    matches = sorted(matches, key=lambda m: m["score"], reverse=True)
+    return matches[:top_n]
+
 st.divider()
 
 if st.button(
@@ -153,7 +218,98 @@ if st.button(
         r = results[0]
         st.metric("Similarity Score", f"{r.similarity * 100:.2f}%")
 
+        text_a = documents[0][1]
+        text_b = documents[1][1]
+        stats_a = _doc_stats(text_a)
+        stats_b = _doc_stats(text_b)
+        words_a = set(_tokenize_words(text_a))
+        words_b = set(_tokenize_words(text_b))
+        shared_words = words_a & words_b
+        unique_a = words_a - words_b
+        unique_b = words_b - words_a
+
+        st.subheader("Detailed Report")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Words (A)", f"{stats_a['word_count']}")
+        c2.metric("Words (B)", f"{stats_b['word_count']}")
+        c3.metric("Shared Words", f"{len(shared_words)}")
+        c4.metric("Sentences (A/B)", f"{stats_a['sentence_count']}/{stats_b['sentence_count']}")
+
+        st.markdown("**Document Length Comparison**")
+        length_data = [
+            {"doc": "A", "label": "Words", "value": stats_a["word_count"]},
+            {"doc": "B", "label": "Words", "value": stats_b["word_count"]},
+            {"doc": "A", "label": "Characters", "value": stats_a["char_count"]},
+            {"doc": "B", "label": "Characters", "value": stats_b["char_count"]},
+            {"doc": "A", "label": "Sentences", "value": stats_a["sentence_count"]},
+            {"doc": "B", "label": "Sentences", "value": stats_b["sentence_count"]},
+        ]
+        st.vega_lite_chart(
+            {
+                "data": {"values": length_data},
+                "mark": "bar",
+                "encoding": {
+                    "x": {"field": "label", "type": "nominal"},
+                    "y": {"field": "value", "type": "quantitative"},
+                    "color": {"field": "doc", "type": "nominal"},
+                },
+            },
+            use_container_width=True,
+        )
+
+        st.markdown("**Shared vs Unique Vocabulary**")
+        vocab_data = [
+            {"group": "Shared", "value": len(shared_words)},
+            {"group": "Unique A", "value": len(unique_a)},
+            {"group": "Unique B", "value": len(unique_b)},
+        ]
+        st.vega_lite_chart(
+            {
+                "data": {"values": vocab_data},
+                "mark": {"type": "arc", "innerRadius": 40},
+                "encoding": {
+                    "theta": {"field": "value", "type": "quantitative"},
+                    "color": {"field": "group", "type": "nominal"},
+                },
+            },
+            use_container_width=True,
+        )
+
+        st.markdown("**Top Shared Terms (TF-IDF overlap)**")
+        shared_terms = _shared_terms(text_a, text_b)
+        if shared_terms:
+            st.vega_lite_chart(
+                {
+                    "data": {"values": shared_terms},
+                    "mark": "bar",
+                    "encoding": {
+                        "x": {"field": "term", "type": "nominal", "sort": "-y"},
+                        "y": {"field": "score", "type": "quantitative"},
+                    },
+                },
+                use_container_width=True,
+            )
+        else:
+            st.info("No shared TF-IDF terms found.")
+
+        st.markdown("**Most Similar Sentences**")
+        matches = _top_sentence_matches(text_a, text_b)
+        if matches:
+            st.dataframe(
+                [
+                    {
+                        "Score": f"{m['score'] * 100:.2f}%",
+                        "Sentence A": m["sentence_a"],
+                        "Sentence B": m["sentence_b"],
+                    }
+                    for m in matches
+                ],
+                use_container_width=True,
+            )
+        else:
+            st.info("No sentence matches found.")
+
 st.divider()
 
 # Footer
-st.caption("🤖 Model: all-MiniLM-L6-v2")
+st.caption("🤖 Model: TF-IDF + Cosine Similarity")
