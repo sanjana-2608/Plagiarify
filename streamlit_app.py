@@ -78,36 +78,38 @@ st.markdown(
 
 st.title("Plagiarify")
 
-st.subheader("📤 Upload Two Files")
+st.subheader("📤 Upload Files")
 col_a, col_b = st.columns(2)
 with col_a:
-    st.markdown("**File A**")
+    st.markdown("**Primary File (A)**")
     file_a = st.file_uploader(
         "Upload file A",
         type=["txt", "pdf", "docx"],
         accept_multiple_files=False,
-        help="Upload the first file",
+        help="Upload the primary file to compare against others",
         label_visibility="collapsed",
         key="file_a",
     )
 with col_b:
-    st.markdown("**File B**")
+    st.markdown("**Comparison Files (B)**")
     file_b = st.file_uploader(
-        "Upload file B",
+        "Upload file(s) B",
         type=["txt", "pdf", "docx"],
-        accept_multiple_files=False,
-        help="Upload the second file",
+        accept_multiple_files=True,
+        help="Upload one or more files to compare against A",
         label_visibility="collapsed",
         key="file_b",
     )
 
-uploaded_files = [f for f in (file_a, file_b) if f]
+comparison_files = file_b if isinstance(file_b, list) else ([] if file_b is None else [file_b])
+uploaded_files = [f for f in [file_a, *comparison_files] if f]
 
-if file_a and file_b:
-    st.success("✅ 2 files uploaded successfully!")
+if file_a and comparison_files:
+    st.success(f"✅ {1 + len(comparison_files)} file(s) uploaded successfully!")
     with st.expander("📋 View uploaded files"):
         st.write(f"- {file_a.name}")
-        st.write(f"- {file_b.name}")
+        for f in comparison_files:
+            st.write(f"- {f.name}")
 
 model_name = DEFAULT_MODEL
 max_sentences = DEFAULT_MAX_SENTENCES
@@ -225,11 +227,11 @@ st.divider()
 
 if st.button(
     "🚀 Compare Documents",
-    disabled=not (file_a and file_b),
+    disabled=not (file_a and comparison_files),
     type="primary",
 ):
-    if not file_a or not file_b:
-        st.warning("⚠️ Please upload exactly two files.")
+    if not file_a or not comparison_files:
+        st.warning("⚠️ Please upload one primary file and at least one comparison file.")
         st.stop()
 
     documents: List[Tuple[str, str]] = []
@@ -260,13 +262,36 @@ if st.button(
         )
 
     if not results:
-        st.warning("⚠️ Please upload exactly two files.")
+        st.warning("⚠️ Please upload one primary file and at least one comparison file.")
     else:
-        r = results[0]
-        st.metric("Similarity Score", f"{r.similarity * 100:.2f}%")
+        primary_name = file_a.name
+        primary_text = documents[0][1]
+        pairs = [r for r in results if r.doc_a == primary_name or r.doc_b == primary_name]
 
-        text_a = documents[0][1]
-        text_b = documents[1][1]
+        st.subheader("Similarity Scores (A vs others)")
+        score_rows = []
+        for r in pairs:
+            other = r.doc_b if r.doc_a == primary_name else r.doc_a
+            score_rows.append({
+                "Document": other,
+                "Similarity %": f"{r.similarity * 100:.2f}%",
+            })
+        st.dataframe(score_rows)
+
+        if not pairs:
+            st.stop()
+
+        selected_doc = st.selectbox(
+            "View detailed report for",
+            [row["Document"] for row in score_rows],
+        )
+
+        selected_pair = next(
+            r for r in pairs if (r.doc_b == selected_doc or r.doc_a == selected_doc)
+        )
+        text_a = primary_text
+        other_index = [name for name, _ in documents].index(selected_doc)
+        text_b = documents[other_index][1]
         stats_a = _doc_stats(text_a)
         stats_b = _doc_stats(text_b)
         words_a = set(_tokenize_words(text_a))
