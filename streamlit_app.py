@@ -25,7 +25,7 @@ def load_text_cached(filename: str, content_hash: str, content: bytes) -> str:
 
 
 st.set_page_config(
-    page_title="Plagiarism Detector",
+    page_title="Plagiarify",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -44,11 +44,13 @@ st.markdown(
         padding: 0;
         border-radius: 8px;
         background: #0f1117;
-        width: 100%;
+        width: 220px;
+        max-width: 100%;
         aspect-ratio: 1 / 1;
         display: flex;
         align-items: center;
         justify-content: center;
+        margin: 0 auto;
     }
     [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"]::before {
         content: "+";
@@ -69,7 +71,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("🔍 Document Similarity Score")
+st.title("Plagiarify")
 
 st.subheader("📤 Upload Two Files")
 col_a, col_b = st.columns(2)
