@@ -179,7 +179,6 @@ st.divider()
 if st.button(
     "🚀 Compare Documents",
     disabled=not (file_a and file_b),
-    use_container_width=True,
     type="primary",
 ):
     if not file_a or not file_b:
@@ -255,7 +254,6 @@ if st.button(
                     "color": {"field": "doc", "type": "nominal"},
                 },
             },
-            use_container_width=True,
         )
 
         st.markdown("**Shared vs Unique Vocabulary**")
@@ -273,7 +271,6 @@ if st.button(
                     "color": {"field": "group", "type": "nominal"},
                 },
             },
-            use_container_width=True,
         )
 
         st.markdown("**Top Shared Terms (TF-IDF overlap)**")
@@ -288,7 +285,6 @@ if st.button(
                         "y": {"field": "score", "type": "quantitative"},
                     },
                 },
-                use_container_width=True,
             )
         else:
             st.info("No shared TF-IDF terms found.")
@@ -305,7 +301,6 @@ if st.button(
                     }
                     for m in matches
                 ],
-                use_container_width=True,
             )
         else:
             st.info("No sentence matches found.")
