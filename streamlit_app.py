@@ -6,7 +6,7 @@ import re
 from typing import Dict, List, Tuple
 
 import streamlit as st
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
@@ -119,7 +119,8 @@ def _split_sentences(text: str) -> List[str]:
 
 
 def _tokenize_words(text: str) -> List[str]:
-    return [w.lower() for w in re.findall(r"[A-Za-z0-9']+", text)]
+    words = [w.lower() for w in re.findall(r"[A-Za-z0-9']+", text)]
+    return [w for w in words if w not in ENGLISH_STOP_WORDS]
 
 
 def _doc_stats(text: str) -> Dict[str, int]:
