@@ -41,23 +41,28 @@ st.markdown(
     }
     [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] {
         border: 2px dashed #4b4b4b;
-        padding: 36px 12px;
-        border-radius: 12px;
+        padding: 0;
+        border-radius: 8px;
         background: #0f1117;
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
     [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"]::before {
         content: "+";
         display: block;
-        font-size: 44px;
-        line-height: 44px;
+        font-size: 64px;
+        line-height: 64px;
         text-align: center;
         color: #8a8a8a;
-        margin-bottom: 10px;
     }
     [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] div,
     [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] small,
-    [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] span {
-        text-align: center;
+    [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] span,
+    [data-testid="stFileUploader"] [data-testid="stFileUploaderDropzone"] button {
+        display: none;
     }
     </style>
     """,
