@@ -7,6 +7,8 @@ from collections import Counter
 from typing import Dict, List, Tuple
 
 import streamlit as st
+import requests
+from bs4 import BeautifulSoup
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
@@ -18,6 +20,8 @@ DEFAULT_MODEL = os.getenv("MODEL_NAME", "tf-idf")
 MAX_FILE_MB = int(os.getenv("MAX_FILE_MB", "10"))
 DEFAULT_MAX_SENTENCES = int(os.getenv("MAX_SENTENCES", "200"))
 DEFAULT_BATCH_SIZE = int(os.getenv("EMBED_BATCH_SIZE", "32"))
+BING_API_KEY = os.getenv("BING_API_KEY", "")
+BING_ENDPOINT = "https://api.bing.microsoft.com/v7.0/search"
 
 
 def _hash_bytes(content: bytes) -> str:
@@ -135,6 +139,75 @@ def _doc_stats(text: str) -> Dict[str, int]:
         "sentence_count": len(sentences),
         "char_count": len(text),
     }
+
+
+def _build_search_queries(text: str, max_queries: int = 3) -> List[str]:
+    sentences = _split_sentences(text)
+    candidates = [s for s in sentences if 8 <= len(s.split()) <= 20]
+    candidates = sorted(candidates, key=lambda s: len(s), reverse=True)
+    queries = []
+    for s in candidates:
+        cleaned = re.sub(r"\s+", " ", s).strip()
+        if cleaned and cleaned not in queries:
+            queries.append(cleaned)
+        if len(queries) >= max_queries:
+            break
+    return queries
+
+
+def _bing_search(
+    query: str,
+    api_key: str,
+    count: int = 5,
+    market: str = "en-US",
+    safe_search: str = "Moderate",
+) -> List[Dict[str, str]]:
+    if not api_key:
+        return []
+    headers = {"Ocp-Apim-Subscription-Key": api_key}
+    params = {
+        "q": query,
+        "count": count,
+        "mkt": market,
+        "safeSearch": safe_search,
+    }
+    try:
+        resp = requests.get(BING_ENDPOINT, headers=headers, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.RequestException:
+        return []
+
+    results = []
+    for item in data.get("webPages", {}).get("value", []):
+        results.append({
+            "name": item.get("name", ""),
+            "url": item.get("url", ""),
+            "snippet": item.get("snippet", ""),
+        })
+    return results
+
+
+def _fetch_page_text(url: str, max_chars: int = 12000) -> str:
+    try:
+        resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+    except requests.RequestException:
+        return ""
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    text = " ".join(soup.get_text(separator=" ").split())
+    return text[:max_chars]
+
+
+def _web_similarity_score(text_a: str, text_b: str) -> float:
+    if not text_a or not text_b:
+        return 0.0
+    vectorizer = TfidfVectorizer(stop_words="english", max_features=5000)
+    tfidf = vectorizer.fit_transform([text_a, text_b])
+    return float(cosine_similarity(tfidf)[0, 1])
 
 
 def _extract_phrases(text: str, top_n: int = 40) -> List[str]:
@@ -286,6 +359,48 @@ if st.button(
 
         if not pairs:
             st.stop()
+
+        st.subheader("Web Source Check")
+        check_web = st.checkbox("Check if primary file appears on the web")
+        api_key = BING_API_KEY
+        if not api_key:
+            api_key = st.text_input("Bing API key", type="password", help="Set BING_API_KEY in Railway for production")
+
+        if check_web:
+            if not api_key:
+                st.warning("Please provide a Bing API key to run web checks.")
+            else:
+                market = st.selectbox("Market", ["en-US", "en-GB", "en-IN"], index=0)
+                safe_search = st.selectbox("SafeSearch", ["Off", "Moderate", "Strict"], index=1)
+                queries = _build_search_queries(primary_text)
+                if not queries:
+                    st.info("Not enough content to form search queries.")
+                else:
+                    with st.spinner("Searching the web..."):
+                        results_set = []
+                        seen_urls = set()
+                        for q in queries:
+                            for item in _bing_search(q, api_key, market=market, safe_search=safe_search):
+                                url = item.get("url", "")
+                                if url and url not in seen_urls:
+                                    seen_urls.add(url)
+                                    results_set.append(item)
+
+                        scored = []
+                        for item in results_set[:8]:
+                            page_text = _fetch_page_text(item.get("url", ""))
+                            score = _web_similarity_score(primary_text[:20000], page_text)
+                            scored.append({
+                                "URL": item.get("url", ""),
+                                "Title": item.get("name", ""),
+                                "Similarity %": f"{score * 100:.2f}%",
+                            })
+
+                        if scored:
+                            scored = sorted(scored, key=lambda r: float(r["Similarity %"][:-1]), reverse=True)
+                            st.dataframe(scored)
+                        else:
+                            st.info("No web matches found.")
 
         selected_docs = st.multiselect(
             "View detailed reports for",
