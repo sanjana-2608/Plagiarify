@@ -7,7 +7,6 @@ from collections import Counter
 from typing import Dict, List, Tuple
 
 import streamlit as st
-from sentence_transformers import SentenceTransformer, util
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS, TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
@@ -136,11 +135,6 @@ def _doc_stats(text: str) -> Dict[str, int]:
     }
 
 
-@st.cache_resource(show_spinner=False)
-def _get_embedder() -> SentenceTransformer:
-    return SentenceTransformer("all-MiniLM-L6-v2")
-
-
 def _extract_phrases(text: str, top_n: int = 40) -> List[str]:
     tokens = _tokenize_words(text)
     if len(tokens) < 2:
@@ -166,10 +160,11 @@ def _semantic_phrase_matches(
     if not phrases_a or not phrases_b:
         return []
 
-    embedder = _get_embedder()
-    emb_a = embedder.encode(phrases_a, convert_to_tensor=True)
-    emb_b = embedder.encode(phrases_b, convert_to_tensor=True)
-    sims = util.cos_sim(emb_a, emb_b).cpu().numpy()
+    vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5))
+    vectorizer.fit(phrases_a + phrases_b)
+    mat_a = vectorizer.transform(phrases_a)
+    mat_b = vectorizer.transform(phrases_b)
+    sims = cosine_similarity(mat_a, mat_b)
 
     matches = []
     for i in range(sims.shape[0]):
