@@ -281,117 +281,119 @@ if st.button(
         if not pairs:
             st.stop()
 
-        selected_doc = st.selectbox(
-            "View detailed report for",
+        selected_docs = st.multiselect(
+            "View detailed reports for",
             [row["Document"] for row in score_rows],
+            default=[row["Document"] for row in score_rows],
         )
 
-        selected_pair = next(
-            r for r in pairs if (r.doc_b == selected_doc or r.doc_a == selected_doc)
-        )
-        text_a = primary_text
-        other_index = [name for name, _ in documents].index(selected_doc)
-        text_b = documents[other_index][1]
-        stats_a = _doc_stats(text_a)
-        stats_b = _doc_stats(text_b)
-        words_a = set(_tokenize_words(text_a))
-        words_b = set(_tokenize_words(text_b))
-        shared_words = words_a & words_b
-        unique_a = words_a - words_b
-        unique_b = words_b - words_a
+        for selected_doc in selected_docs:
+            selected_pair = next(
+                r for r in pairs if (r.doc_b == selected_doc or r.doc_a == selected_doc)
+            )
+            text_a = primary_text
+            other_index = [name for name, _ in documents].index(selected_doc)
+            text_b = documents[other_index][1]
+            stats_a = _doc_stats(text_a)
+            stats_b = _doc_stats(text_b)
+            words_a = set(_tokenize_words(text_a))
+            words_b = set(_tokenize_words(text_b))
+            shared_words = words_a & words_b
+            unique_a = words_a - words_b
+            unique_b = words_b - words_a
 
-        st.subheader("Detailed Report")
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Words (A)", f"{stats_a['word_count']}")
-        c2.metric("Words (B)", f"{stats_b['word_count']}")
-        c3.metric("Shared Words", f"{len(shared_words)}")
-        c4.metric("Sentences (A/B)", f"{stats_a['sentence_count']}/{stats_b['sentence_count']}")
+            st.subheader(f"Detailed Report: {selected_doc}")
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Words (A)", f"{stats_a['word_count']}")
+            c2.metric("Words (B)", f"{stats_b['word_count']}")
+            c3.metric("Shared Words", f"{len(shared_words)}")
+            c4.metric("Sentences (A/B)", f"{stats_a['sentence_count']}/{stats_b['sentence_count']}")
 
-        st.markdown("**Document Length Comparison**")
-        length_data = [
-            {"doc": "A", "label": "Words", "value": stats_a["word_count"]},
-            {"doc": "B", "label": "Words", "value": stats_b["word_count"]},
-            {"doc": "A", "label": "Characters", "value": stats_a["char_count"]},
-            {"doc": "B", "label": "Characters", "value": stats_b["char_count"]},
-            {"doc": "A", "label": "Sentences", "value": stats_a["sentence_count"]},
-            {"doc": "B", "label": "Sentences", "value": stats_b["sentence_count"]},
-        ]
-        st.vega_lite_chart(
-            {
-                "data": {"values": length_data},
-                "mark": "bar",
-                "encoding": {
-                    "x": {"field": "label", "type": "nominal"},
-                    "y": {"field": "value", "type": "quantitative"},
-                    "color": {"field": "doc", "type": "nominal"},
-                },
-            },
-        )
-
-        st.markdown("**Shared vs Unique Vocabulary**")
-        vocab_data = [
-            {"group": "Shared", "value": len(shared_words)},
-            {"group": "Unique A", "value": len(unique_a)},
-            {"group": "Unique B", "value": len(unique_b)},
-        ]
-        st.vega_lite_chart(
-            {
-                "data": {"values": vocab_data},
-                "mark": {"type": "arc", "innerRadius": 40},
-                "encoding": {
-                    "theta": {"field": "value", "type": "quantitative"},
-                    "color": {"field": "group", "type": "nominal"},
-                },
-            },
-        )
-
-        st.markdown("**Top Shared Terms (TF-IDF overlap)**")
-        shared_terms = _shared_terms(text_a, text_b)
-        if shared_terms:
+            st.markdown("**Document Length Comparison**")
+            length_data = [
+                {"doc": "A", "label": "Words", "value": stats_a["word_count"]},
+                {"doc": "B", "label": "Words", "value": stats_b["word_count"]},
+                {"doc": "A", "label": "Characters", "value": stats_a["char_count"]},
+                {"doc": "B", "label": "Characters", "value": stats_b["char_count"]},
+                {"doc": "A", "label": "Sentences", "value": stats_a["sentence_count"]},
+                {"doc": "B", "label": "Sentences", "value": stats_b["sentence_count"]},
+            ]
             st.vega_lite_chart(
                 {
-                    "data": {"values": shared_terms},
+                    "data": {"values": length_data},
                     "mark": "bar",
                     "encoding": {
-                        "x": {"field": "term", "type": "nominal", "sort": "-y"},
-                        "y": {"field": "score", "type": "quantitative"},
+                        "x": {"field": "label", "type": "nominal"},
+                        "y": {"field": "value", "type": "quantitative"},
+                        "color": {"field": "doc", "type": "nominal"},
                     },
                 },
             )
-        else:
-            st.info("No shared TF-IDF terms found.")
 
-        st.markdown("**Most Similar Sentences**")
-        matches = _top_sentence_matches(text_a, text_b)
-        if matches:
-            st.dataframe(
-                [
-                    {
-                        "Score": f"{m['score'] * 100:.2f}%",
-                        "Sentence A": m["sentence_a"],
-                        "Sentence B": m["sentence_b"],
-                    }
-                    for m in matches
-                ],
+            st.markdown("**Shared vs Unique Vocabulary**")
+            vocab_data = [
+                {"group": "Shared", "value": len(shared_words)},
+                {"group": "Unique A", "value": len(unique_a)},
+                {"group": "Unique B", "value": len(unique_b)},
+            ]
+            st.vega_lite_chart(
+                {
+                    "data": {"values": vocab_data},
+                    "mark": {"type": "arc", "innerRadius": 40},
+                    "encoding": {
+                        "theta": {"field": "value", "type": "quantitative"},
+                        "color": {"field": "group", "type": "nominal"},
+                    },
+                },
             )
-        else:
-            st.info("No sentence matches found.")
 
-        st.markdown("**Similar Concepts Matched**")
-        phrase_matches = _semantic_phrase_matches(text_a, text_b)
-        if phrase_matches:
-            st.dataframe(
-                [
+            st.markdown("**Top Shared Terms (TF-IDF overlap)**")
+            shared_terms = _shared_terms(text_a, text_b)
+            if shared_terms:
+                st.vega_lite_chart(
                     {
-                        "Score": f"{m['score'] * 100:.2f}%",
-                        "Phrase A": m["phrase_a"],
-                        "Phrase B": m["phrase_b"],
-                    }
-                    for m in phrase_matches
-                ],
-            )
-        else:
-            st.info("No similar phrase matches found.")
+                        "data": {"values": shared_terms},
+                        "mark": "bar",
+                        "encoding": {
+                            "x": {"field": "term", "type": "nominal", "sort": "-y"},
+                            "y": {"field": "score", "type": "quantitative"},
+                        },
+                    },
+                )
+            else:
+                st.info("No shared TF-IDF terms found.")
+
+            st.markdown("**Most Similar Sentences**")
+            matches = _top_sentence_matches(text_a, text_b)
+            if matches:
+                st.dataframe(
+                    [
+                        {
+                            "Score": f"{m['score'] * 100:.2f}%",
+                            "Sentence A": m["sentence_a"],
+                            "Sentence B": m["sentence_b"],
+                        }
+                        for m in matches
+                    ],
+                )
+            else:
+                st.info("No sentence matches found.")
+
+            st.markdown("**Similar Concepts Matched**")
+            phrase_matches = _semantic_phrase_matches(text_a, text_b)
+            if phrase_matches:
+                st.dataframe(
+                    [
+                        {
+                            "Score": f"{m['score'] * 100:.2f}%",
+                            "Phrase A": m["phrase_a"],
+                            "Phrase B": m["phrase_b"],
+                        }
+                        for m in phrase_matches
+                    ],
+                )
+            else:
+                st.info("No similar phrase matches found.")
 
 st.divider()
 
